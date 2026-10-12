@@ -63,7 +63,7 @@ export function Workouts() {
     <>
       <div className="card">
         <h1>Workouts</h1>
-        <p>Each line is scaled to its own highest value, so heart rate, cadence, and power share one chart. The newest ride is first.</p>
+        <p>The solid line is the reading and the dotted line is the target. Heart rate, cadence, and power each have their own scale, in real units. The newest ride is first.</p>
         {total === 0 ? <p>No workouts yet.</p> : null}
         {total > PAGE ? (
           <div className="row">
@@ -99,29 +99,28 @@ function Chart({ points }: { points: Point[] }) {
   const width = 1000;
   const height = 420;
   const padL = 72;
-  const padR = 16;
+  const padR = 110;
   const padT = 68;
   const padB = 44;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
-  const peak = {
-    hr: Math.max(...points.map((point) => point.hr), 1),
-    cadence: Math.max(...points.map((point) => point.cadence), 1),
-    power: Math.max(...points.map((point) => point.power), 1),
-  };
-  function percent(point: Point, key: "hr" | "cadence" | "power", targetKey: "target_hr" | "target_cadence" | "target_power") {
-    const target = point[targetKey];
-    const base = target && target > 0 ? target : peak[key];
-    return (point[key] / base) * 100;
+  function axis(item: (typeof series)[number]) {
+    const values = points.flatMap((point) => {
+      const target = point[item.target];
+      return target && target > 0 ? [point[item.key], target] : [point[item.key]];
+    });
+    const max = Math.max(...values, 1);
+    const step = max <= 40 ? 10 : max <= 100 ? 20 : max <= 250 ? 50 : 100;
+    const top = Math.max(step, Math.ceil(max / step) * step);
+    const ticks: number[] = [];
+    for (let tick = 0; tick <= top; tick += step) ticks.push(tick);
+    return { top, ticks };
   }
-  const highest = Math.max(
-    100,
-    ...points.flatMap((point) => series.map((item) => percent(point, item.key, item.target))),
-  );
-  const yStep = highest > 200 ? 50 : 25;
-  const yTop = Math.ceil(highest / yStep) * yStep;
-  const yTicks: number[] = [];
-  for (let tick = 0; tick <= yTop; tick += yStep) yTicks.push(tick);
+  const axes = {
+    hr: axis(series[0]),
+    cadence: axis(series[1]),
+    power: axis(series[2]),
+  };
   const start = points[0].t;
   const span = Math.max(points[points.length - 1].t - start, 1);
   const minutes = span / 60000;
@@ -130,15 +129,19 @@ function Chart({ points }: { points: Point[] }) {
   function xOf(t: number) {
     return padL + ((t - start) / span) * plotW;
   }
-  function yOf(pct: number) {
-    return padT + (1 - pct / yTop) * plotH;
+  function yOf(value: number, top: number) {
+    return padT + (1 - value / top) * plotH;
   }
-  function line(key: "hr" | "cadence" | "power", targetKey: "target_hr" | "target_cadence" | "target_power") {
+  function line(key: "hr" | "cadence" | "power", targetKey: "target_hr" | "target_cadence" | "target_power", useTarget: boolean) {
+    const top = axes[key].top;
     return points
       .map((point, index) => {
+        const value = useTarget ? point[targetKey] : point[key];
+        if (useTarget && (!value || value <= 0)) return "";
         const x = xOf(point.t);
-        const y = yOf(percent(point, key, targetKey));
-        return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+        const y = yOf(value || 0, top);
+        const command = index === 0 || (useTarget && (!points[index - 1][targetKey] || points[index - 1][targetKey]! <= 0)) ? "M" : "L";
+        return `${command}${x.toFixed(1)},${y.toFixed(1)}`;
       })
       .join(" ");
   }
@@ -146,20 +149,23 @@ function Chart({ points }: { points: Point[] }) {
   return (
     <div>
       <svg viewBox={`0 0 ${width} ${height}`} className="chart" role="img">
-        {yTicks.map((tick) => (
-          <g key={tick}>
-            <line
-              x1={padL}
-              x2={width - padR}
-              y1={yOf(tick)}
-              y2={yOf(tick)}
-              stroke={tick === 100 ? "#1c1915" : "#e2d9c8"}
-              strokeDasharray={tick === 100 ? "6 4" : undefined}
-            />
-            <text x={padL - 8} y={yOf(tick) + 5} textAnchor="end" className="axis">
-              {tick}%
+        {axes.hr.ticks.map((tick) => (
+          <g key={`hr-${tick}`}>
+            <line x1={padL} x2={width - padR} y1={yOf(tick, axes.hr.top)} y2={yOf(tick, axes.hr.top)} stroke="#e2d9c8" />
+            <text x={padL - 8} y={yOf(tick, axes.hr.top) + 5} textAnchor="end" fontSize="16" fill="#c23b2e">
+              {tick}
             </text>
           </g>
+        ))}
+        {axes.cadence.ticks.map((tick) => (
+          <text key={`cadence-${tick}`} x={width - padR + 8} y={yOf(tick, axes.cadence.top) + 5} textAnchor="start" fontSize="16" fill="#1d7a8c">
+            {tick}
+          </text>
+        ))}
+        {axes.power.ticks.map((tick) => (
+          <text key={`power-${tick}`} x={width - 4} y={yOf(tick, axes.power.top) + 5} textAnchor="end" fontSize="16" fill="#c47b12">
+            {tick}
+          </text>
         ))}
         {xTicks.map((tick) => (
           <text key={tick} x={padL + tick * plotW} y={height - 12} textAnchor="middle" className="axis">
@@ -169,11 +175,14 @@ function Chart({ points }: { points: Point[] }) {
         <line x1={padL} x2={padL} y1={padT} y2={padT + plotH} stroke="#1c1915" />
         <line x1={padL} x2={width - padR} y1={padT + plotH} y2={padT + plotH} stroke="#1c1915" />
         {series.map((item) => (
-          <path key={item.key} d={line(item.key, item.target)} fill="none" stroke={item.color} strokeWidth="3" />
+          <path key={`${item.key}-target`} d={line(item.key, item.target, true)} fill="none" stroke={item.color} strokeWidth="2" strokeDasharray="8 6" />
+        ))}
+        {series.map((item) => (
+          <path key={item.key} d={line(item.key, item.target, false)} fill="none" stroke={item.color} strokeWidth="3" />
         ))}
         {series.map((item, index) => (
           <text key={item.key} x={padL} y={16 + index * 16} fontSize="16" fill={item.color}>
-            {item.label}, 100% is the target
+            {item.label}
           </text>
         ))}
       </svg>
