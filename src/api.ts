@@ -1,4 +1,4 @@
-export const API = "http://127.0.0.1:8000";
+export const API = `http://${window.location.hostname}:8000`;
 
 export class ApiError extends Error {
   status: number;
@@ -10,7 +10,9 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
   if (response.status === 204) return undefined as T;
   const text = await response.text();
@@ -24,7 +26,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export type User = { id: number; email: string; name: string };
 
+export type Person = { id: number; name: string; selected: boolean; has_picture: boolean };
+
 export type Profile = {
+  person?: string;
   birth_date: string | null;
   sex: "female" | "male" | "unspecified";
   weight_kg: number | null;

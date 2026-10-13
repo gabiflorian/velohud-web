@@ -18,7 +18,18 @@ export function ProfilePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Profile>("/profile").then(setProfile);
+    let stopped = false;
+    function load() {
+      api<Profile>("/profile").then((next) => {
+        if (!stopped) setProfile(next);
+      });
+    }
+    load();
+    window.addEventListener("velo-people", load);
+    return () => {
+      stopped = true;
+      window.removeEventListener("velo-people", load);
+    };
   }, []);
 
   async function save(event: FormEvent) {
@@ -40,8 +51,8 @@ export function ProfilePage() {
 
   return (
     <form className="card" onSubmit={save}>
-      <h1>Profile</h1>
-      <p>Date of birth is what the week of sessions is built from. Leave max heart rate empty to use an estimate. Power targets appear only when a threshold power is set.</p>
+      <h1>Profile{profile.person ? ` · ${profile.person}` : ""}</h1>
+      <p>This is the selected rider. Date of birth is what that person’s week of sessions is built from. Leave max heart rate empty to use an estimate. Power targets appear only when a threshold power is set.</p>
       <label>
         <span>Date of birth</span>
         <input type="date" value={profile.birth_date ?? ""} onChange={(event) => set("birth_date", event.target.value || null)} />

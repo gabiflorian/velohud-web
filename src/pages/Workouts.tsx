@@ -4,9 +4,11 @@ import { api } from "../api";
 type Workout = {
   id: number;
   program: string;
+  person?: string | null;
   started_at: string;
   ended_at: string | null;
   active: boolean;
+  feedback?: string | null;
 };
 
 type Point = {
@@ -29,9 +31,19 @@ const PAGE = 10;
 
 export function Workouts() {
   const [page, setPage] = useState(0);
+  const [personTick, setPersonTick] = useState(0);
   const [total, setTotal] = useState(0);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [charts, setCharts] = useState<Record<number, Point[]>>({});
+
+  useEffect(() => {
+    function onPerson() {
+      setPage(0);
+      setPersonTick((tick) => tick + 1);
+    }
+    window.addEventListener("velo-people", onPerson);
+    return () => window.removeEventListener("velo-people", onPerson);
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -55,7 +67,7 @@ export function Workouts() {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [page]);
+  }, [page, personTick]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
@@ -63,7 +75,7 @@ export function Workouts() {
     <>
       <div className="card">
         <h1>Workouts</h1>
-        <p>The solid line is the reading and the dotted line is the target. Heart rate, cadence, and power each have their own scale, in real units. The newest ride is first.</p>
+        <p>These are the selected rider’s workouts. The solid line is the reading and the dotted line is the target. Heart rate, cadence, and power each have their own scale, in real units. The newest ride is first.</p>
         {total === 0 ? <p>No workouts yet.</p> : null}
         {total > PAGE ? (
           <div className="row">
@@ -79,12 +91,42 @@ export function Workouts() {
             {startedTitle(workout.started_at)}
             {workout.active ? " · now" : ""}
           </h2>
-          <p>{workout.program}</p>
+          <p>{workout.person ? `${workout.person} · ` : ""}{workout.program}</p>
+          {workout.feedback ? <Feedback text={workout.feedback} /> : null}
           <Chart points={charts[workout.id] ?? []} />
         </div>
       ))}
     </>
   );
+}
+
+function Feedback({ text }: { text: string }) {
+  const note = readFeedback(text);
+  if (!note) return <p>{text.replace(/\*/g, "")}</p>;
+  return (
+    <div>
+      <p>{note.verdict}</p>
+      {note.calories ? (
+        <p>
+          {note.calories} kcal, estimated from heart rate. {note.food}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function readFeedback(text: string): { verdict: string; calories: number | null; food: string } | null {
+  try {
+    const body = JSON.parse(text) as { verdict?: string; calories?: number | null; food?: string };
+    if (!body || typeof body.verdict !== "string") return null;
+    return {
+      verdict: body.verdict,
+      calories: typeof body.calories === "number" ? body.calories : null,
+      food: typeof body.food === "string" ? body.food : "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 function startedTitle(iso: string) {

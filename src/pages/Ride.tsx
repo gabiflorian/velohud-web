@@ -4,6 +4,7 @@ import { api } from "../api";
 type LiveRide = {
   active: boolean;
   program?: string | null;
+  person?: string | null;
   hr?: number | null;
   cadence?: number | null;
   power?: number | null;
@@ -46,7 +47,7 @@ export function Ride() {
   return (
     <div className="card">
       <h1>Ride</h1>
-      <p>{ride.program || "Current session"}</p>
+      <p>{ride.person ? `${ride.person} · ` : ""}{ride.program || "Current session"}</p>
       <div className="metrics">
         <Metric label="Heart rate" value={ride.hr} target={ride.target_hr} unit="bpm" />
         <Metric label="Cadence" value={ride.cadence} target={ride.target_cadence} unit="rpm" />

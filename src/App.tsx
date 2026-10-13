@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, API, User, api } from "./api";
+import { ApiError, API, Person, User, api } from "./api";
 import { Bikes } from "./pages/Bikes";
 import { Login } from "./pages/Login";
+import { People } from "./pages/People";
 import { ProfilePage } from "./pages/Profile";
 import { ProgramEdit } from "./pages/ProgramEdit";
 import { Programs } from "./pages/Programs";
@@ -47,6 +48,8 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
         <nav>
           <Link to="/ride">Ride</Link>
           <Link to="/workouts">Workouts</Link>
+          <RiderSelect />
+          <Link to="/people">People</Link>
           <Link to="/profile">Profile</Link>
           <Link to="/programs">Programs</Link>
           <Link to="/bikes">Bike</Link>
@@ -59,6 +62,7 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
           <Route path="/" element={<Navigate to="/ride" replace />} />
           <Route path="/ride" element={<Ride />} />
           <Route path="/workouts" element={<Workouts />} />
+          <Route path="/people" element={<People />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/programs" element={<Programs />} />
           <Route path="/programs/:id" element={<ProgramEdit />} />
@@ -66,6 +70,48 @@ function Shell({ user, onSignOut }: { user: User; onSignOut: () => void }) {
         </Routes>
       </main>
     </>
+  );
+}
+
+function RiderSelect() {
+  const [people, setPeople] = useState<Person[]>([]);
+
+  useEffect(() => {
+    let stopped = false;
+    async function load() {
+      try {
+        const next = await api<Person[]>("/persons");
+        if (!stopped) setPeople(next);
+      } catch {
+        if (!stopped) setPeople([]);
+      }
+    }
+    load();
+    window.addEventListener("velo-people", load);
+    return () => {
+      stopped = true;
+      window.removeEventListener("velo-people", load);
+    };
+  }, []);
+
+  const selected = people.find((person) => person.selected)?.id ?? "";
+  if (people.length === 0) return null;
+
+  return (
+    <select
+      aria-label="Rider"
+      value={selected}
+      onChange={(event) => {
+        api<Person[]>(`/persons/${event.target.value}/select`, { method: "POST" }).then((next) => {
+          setPeople(next);
+          window.dispatchEvent(new Event("velo-people"));
+        });
+      }}
+    >
+      {people.map((person) => (
+        <option key={person.id} value={person.id}>{person.name}</option>
+      ))}
+    </select>
   );
 }
 
